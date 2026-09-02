@@ -2,7 +2,16 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -49,6 +58,9 @@ class Job(Base):
 
 class Candidate(Base):
     __tablename__ = "candidates"
+    __table_args__ = (
+        UniqueConstraint("job_id", "apollo_id", name="uq_candidates_job_apollo"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     job_id: Mapped[uuid.UUID] = mapped_column(

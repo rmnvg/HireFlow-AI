@@ -10,6 +10,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import get_settings
 from app.database import check_database_connection, init_db
+from app.routers.candidates import router as candidates_router
 from app.routers.jobs import router as jobs_router
 from app.schemas import ErrorResponse
 
@@ -43,6 +44,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(jobs_router)
+app.include_router(candidates_router)
 
 
 class HealthResponse(BaseModel):

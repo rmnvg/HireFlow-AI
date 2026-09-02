@@ -28,3 +28,14 @@ def test_foreign_keys_use_cascade_deletes() -> None:
     calls = Base.metadata.tables["calls"]
     assert next(iter(calls.columns["job_id"].foreign_keys)).ondelete == "CASCADE"
     assert next(iter(calls.columns["candidate_id"].foreign_keys)).ondelete == "CASCADE"
+
+
+def test_candidate_apollo_id_is_unique_within_each_job() -> None:
+    candidates = Base.metadata.tables["candidates"]
+    unique_column_sets = {
+        tuple(column.name for column in constraint.columns)
+        for constraint in candidates.constraints
+        if constraint.__class__.__name__ == "UniqueConstraint"
+    }
+
+    assert ("job_id", "apollo_id") in unique_column_sets

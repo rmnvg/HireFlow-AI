@@ -89,6 +89,29 @@ class CandidateResponse(CandidateCreate, ORMResponse):
     created_at: datetime
 
 
+class CandidateSearchResponse(BaseModel):
+    job_id: uuid.UUID
+    search_keywords: str
+    fallback_without_keywords: bool
+    review_note: str
+    candidates: list[CandidateResponse]
+
+
+class CandidatePhoneUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    phone: str = Field(min_length=1, max_length=64)
+
+
+class ManualCandidateCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    job_id: uuid.UUID
+    name: str = Field(min_length=1, max_length=255)
+    phone: str = Field(min_length=1, max_length=64)
+    email: str = Field(min_length=3, max_length=320)
+
+
 class CallCreate(BaseModel):
     job_id: uuid.UUID
     candidate_id: uuid.UUID

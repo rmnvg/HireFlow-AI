@@ -91,6 +91,26 @@ curl -X POST http://localhost:8000/api/jobs \
 
 List jobs with `GET /api/jobs` and retrieve one with `GET /api/jobs/{id}`. List requests support `offset` and `limit` query parameters.
 
+## Apollo candidate search
+
+Set `APOLLO_API_KEY` in `.env`, then call:
+
+```bash
+curl -X POST http://localhost:8000/api/jobs/JOB_UUID/search-candidates
+```
+
+This integration uses Apollo's `POST /api/v1/contacts/search` endpoint. It searches only contacts already saved in your team's Apollo workspace; it does not search Apollo's broader people database. The saved job's `search_keywords` are sent as `q_keywords`, with `page=1` and `per_page=10`.
+
+If the keyword search returns no contacts, HireFlow retries once without `q_keywords`. The response sets `fallback_without_keywords=true` and clearly labels those unfiltered workspace contacts as recruiter-review candidates, not guaranteed job matches.
+
+Candidate endpoints:
+
+- `GET /api/candidates?job_id=JOB_UUID`
+- `PATCH /api/candidates/CANDIDATE_UUID/phone` with `{"phone":"+919999999999"}`
+- `POST /api/candidates/manual` with `job_id`, `name`, `phone`, and `email`
+
+Apollo candidates are deduplicated per job using `(job_id, apollo_id)`, while the complete Apollo contact object is retained in `raw_profile`. API credentials and complete request headers are never logged.
+
 ## Validation
 
 ```bash

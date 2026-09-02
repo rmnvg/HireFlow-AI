@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     groq_api_key: SecretStr | None = None
     groq_model: str = "openai/gpt-oss-120b"
     groq_timeout_seconds: float = Field(default=30.0, gt=0, le=120)
+    apollo_api_key: SecretStr | None = None
+    apollo_contacts_url: str = "https://api.apollo.io/api/v1/contacts/search"
+    apollo_timeout_seconds: float = Field(default=20.0, gt=0, le=120)
     backend_host: str = "0.0.0.0"
     backend_port: int = Field(default=8000, ge=1, le=65535)
 
