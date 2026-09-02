@@ -1,198 +1,79 @@
-import {
-  ArrowRight,
-  Bell,
-  BriefcaseBusiness,
-  CalendarDays,
-  ChartNoAxesCombined,
-  ChevronDown,
-  CircleUserRound,
-  Clock3,
-  LayoutDashboard,
-  Plus,
-  Search,
-  Settings,
-  Sparkles,
-  Users,
-} from "lucide-react";
+"use client";
 
-import { Badge } from "@/components/ui/badge";
+import { BriefcaseBusiness, CheckCircle2, Headphones, PhoneCall, Sparkles, Users } from "lucide-react";
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
+
+import { EmptyState } from "@/components/empty-state";
+import { PageHeader } from "@/components/page-header";
+import { StatusBadge } from "@/components/status-badge";
+import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { api, errorMessage } from "@/lib/api";
+import { formatDate, isCompleted, isInterested } from "@/lib/presentation";
+import type { Call, Candidate, Job } from "@/lib/types";
 
-const metrics = [
-  { label: "Active roles", value: "12", change: "+2 this month", icon: BriefcaseBusiness },
-  { label: "Candidates", value: "248", change: "+18 this week", icon: Users },
-  { label: "Interviews", value: "36", change: "8 scheduled today", icon: CalendarDays },
-  { label: "Time to hire", value: "18d", change: "3 days faster", icon: Clock3 },
-];
+export default function DashboardPage() {
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [calls, setCalls] = useState<Call[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-const pipeline = [
-  { stage: "Applied", count: 124, percent: 100 },
-  { stage: "AI screened", count: 82, percent: 66 },
-  { stage: "Interview", count: 36, percent: 29 },
-  { stage: "Offer", count: 9, percent: 7 },
-];
+  const loadDashboard = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [loadedJobs, loadedCalls] = await Promise.all([api.listJobs(), api.listCalls()]);
+      const candidateGroups = await Promise.all(loadedJobs.map((job) => api.listCandidates(job.id)));
+      setJobs(loadedJobs);
+      setCalls(loadedCalls);
+      setCandidates(candidateGroups.flat());
+    } catch (loadError) {
+      setError(errorMessage(loadError));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-const activity = [
-  { initials: "AM", name: "Aisha Mehta", action: "advanced to technical interview", role: "Senior Product Designer", time: "12 min ago" },
-  { initials: "RK", name: "Rohan Kapoor", action: "completed AI screening", role: "Backend Engineer", time: "38 min ago" },
-  { initials: "NS", name: "Nina Shah", action: "accepted the interview invite", role: "Growth Marketing Lead", time: "1 hr ago" },
-];
+  useEffect(() => {
+    async function initialize() { await loadDashboard(); }
+    void initialize();
+  }, [loadDashboard]);
 
-const navigation = [
-  { label: "Overview", icon: LayoutDashboard, active: true },
-  { label: "Jobs", icon: BriefcaseBusiness },
-  { label: "Candidates", icon: Users },
-  { label: "Interviews", icon: CalendarDays },
-  { label: "Analytics", icon: ChartNoAxesCombined },
-];
+  const jobById = useMemo(() => new Map(jobs.map((job) => [job.id, job])), [jobs]);
+  const candidateById = useMemo(() => new Map(candidates.map((candidate) => [candidate.id, candidate])), [candidates]);
+  const metrics = [
+    { label: "Total jobs", value: jobs.length, icon: BriefcaseBusiness, tone: "bg-violet-50 text-violet-600" },
+    { label: "Candidates", value: candidates.length, icon: Users, tone: "bg-blue-50 text-blue-600" },
+    { label: "Calls initiated", value: calls.length, icon: PhoneCall, tone: "bg-amber-50 text-amber-600" },
+    { label: "Completed calls", value: calls.filter((call) => isCompleted(call.status)).length, icon: CheckCircle2, tone: "bg-emerald-50 text-emerald-600" },
+    { label: "Interested", value: calls.filter(isInterested).length, icon: Sparkles, tone: "bg-fuchsia-50 text-fuchsia-600" },
+  ];
 
-export default function Dashboard() {
   return (
-    <div className="min-h-screen lg:grid lg:grid-cols-[248px_1fr]">
-      <aside className="hidden border-r bg-white lg:flex lg:flex-col">
-        <div className="flex h-18 items-center gap-3 border-b px-6">
-          <div className="flex size-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
-            <Sparkles className="size-5" />
-          </div>
-          <div>
-            <p className="font-bold tracking-tight">HireFlow AI</p>
-            <p className="text-xs text-muted-foreground">Hiring workspace</p>
-          </div>
-        </div>
-        <nav className="flex-1 space-y-1 p-4">
-          <p className="mb-3 px-3 text-[11px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">Workspace</p>
-          {navigation.map(({ label, icon: Icon, active }) => (
-            <button
-              className={cn(
-                "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-                active ? "bg-secondary text-secondary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
-              )}
-              key={label}
-            >
-              <Icon className="size-4.5" />
-              {label}
-            </button>
-          ))}
-        </nav>
-        <div className="border-t p-4">
-          <button className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground">
-            <Settings className="size-4.5" /> Settings
-          </button>
-          <div className="mt-3 flex items-center gap-3 rounded-xl bg-muted p-3">
-            <div className="flex size-9 items-center justify-center rounded-full bg-slate-800 text-xs font-semibold text-white">RM</div>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold">Recruiting team</p>
-              <p className="truncate text-xs text-muted-foreground">Admin workspace</p>
-            </div>
-            <ChevronDown className="size-4 text-muted-foreground" />
-          </div>
-        </div>
-      </aside>
+    <div>
+      <PageHeader actions={<Button asChild><Link href="/jobs/new"><BriefcaseBusiness className="size-4" /> Create a job</Link></Button>} description="Monitor sourcing and AI screening outcomes across your active hiring pipeline." eyebrow="Overview" title="Recruiting dashboard" />
+      {error ? <div className="mb-5"><Alert variant="error"><div className="flex flex-wrap items-center gap-3"><span>{error}</span><button className="font-semibold underline" onClick={() => void loadDashboard()}>Try again</button></div></Alert></div> : null}
 
-      <main className="min-w-0">
-        <header className="flex h-18 items-center justify-between border-b bg-white px-5 sm:px-8">
-          <div className="flex items-center gap-3 lg:hidden">
-            <div className="flex size-9 items-center justify-center rounded-xl bg-primary text-white"><Sparkles className="size-5" /></div>
-            <span className="font-bold">HireFlow AI</span>
-          </div>
-          <div className="relative hidden w-full max-w-sm lg:block">
-            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <input aria-label="Search" className="h-10 w-full rounded-lg border bg-background pl-10 pr-4 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/10" placeholder="Search candidates, jobs..." />
-          </div>
-          <div className="flex items-center gap-2">
-            <Button aria-label="Notifications" size="icon" variant="ghost"><Bell className="size-5" /></Button>
-            <Button className="hidden sm:inline-flex"><Plus className="size-4" /> Create job</Button>
-            <CircleUserRound className="size-8 text-muted-foreground sm:hidden" />
-          </div>
-        </header>
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        {loading ? Array.from({ length: 5 }, (_, index) => <Skeleton className="h-32" key={index} />) : metrics.map(({ icon: Icon, label, tone, value }) => (
+          <Card className="border-slate-200 shadow-sm" key={label}><CardContent className="p-5"><div className="flex items-start justify-between gap-3"><div><p className="text-sm font-medium text-slate-500">{label}</p><p className="mt-3 text-3xl font-bold tracking-tight text-slate-950">{value}</p></div><span className={`flex size-10 items-center justify-center rounded-xl ${tone}`}><Icon className="size-5" /></span></div></CardContent></Card>
+        ))}
+      </section>
 
-        <div className="mx-auto max-w-[1500px] space-y-7 p-5 sm:p-8">
-          <section className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-            <div>
-              <p className="mb-1 text-sm font-medium text-primary">Wednesday, September 2</p>
-              <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Good morning, recruiting team</h1>
-              <p className="mt-1 text-sm text-muted-foreground">Here&apos;s what&apos;s happening across your hiring pipeline.</p>
-            </div>
-            <Button variant="outline"><ChartNoAxesCombined className="size-4" /> View reports</Button>
-          </section>
-
-          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {metrics.map(({ label, value, change, icon: Icon }) => (
-              <Card key={label}>
-                <CardContent className="p-5">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">{label}</p>
-                      <p className="mt-2 text-3xl font-bold tracking-tight">{value}</p>
-                    </div>
-                    <div className="flex size-10 items-center justify-center rounded-xl bg-secondary text-secondary-foreground"><Icon className="size-5" /></div>
-                  </div>
-                  <p className="mt-4 text-xs font-medium text-emerald-600">{change}</p>
-                </CardContent>
-              </Card>
-            ))}
-          </section>
-
-          <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-            <Card>
-              <CardHeader className="flex-row items-start justify-between space-y-0">
-                <div><CardTitle>Hiring pipeline</CardTitle><CardDescription className="mt-1.5">Candidates across all active roles</CardDescription></div>
-                <Badge>Last 30 days</Badge>
-              </CardHeader>
-              <CardContent className="space-y-5">
-                {pipeline.map((item) => (
-                  <div key={item.stage}>
-                    <div className="mb-2 flex items-center justify-between text-sm"><span className="font-medium">{item.stage}</span><span className="font-semibold">{item.count}</span></div>
-                    <div className="h-2.5 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary" style={{ width: `${item.percent}%` }} /></div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex-row items-start justify-between space-y-0">
-                <div><CardTitle>AI recommendations</CardTitle><CardDescription className="mt-1.5">High-impact actions for your team</CardDescription></div>
-                <div className="flex size-9 items-center justify-center rounded-lg bg-secondary text-secondary-foreground"><Sparkles className="size-4.5" /></div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="rounded-xl border bg-gradient-to-br from-white to-secondary/35 p-4">
-                  <Badge className="mb-3 bg-amber-100 text-amber-700">Needs attention</Badge>
-                  <p className="font-semibold">6 candidates are waiting for feedback</p>
-                  <p className="mt-1 text-sm leading-6 text-muted-foreground">Review interview notes to keep your strongest candidates engaged.</p>
-                  <button className="mt-3 flex items-center gap-1 text-sm font-semibold text-primary">Review candidates <ArrowRight className="size-4" /></button>
-                </div>
-                <div className="rounded-xl border p-4">
-                  <p className="font-semibold">Backend Engineer pipeline is strong</p>
-                  <p className="mt-1 text-sm leading-6 text-muted-foreground">AI screening identified 8 high-match candidates this week.</p>
-                </div>
-              </CardContent>
-            </Card>
-          </section>
-
-          <Card>
-            <CardHeader className="flex-row items-center justify-between space-y-0">
-              <div><CardTitle>Recent activity</CardTitle><CardDescription className="mt-1.5">Latest candidate and team updates</CardDescription></div>
-              <Button size="sm" variant="ghost">View all <ArrowRight className="size-4" /></Button>
-            </CardHeader>
-            <CardContent>
-              <div className="divide-y">
-                {activity.map((item) => (
-                  <div className="flex items-center gap-4 py-4 first:pt-0 last:pb-0" key={item.name}>
-                    <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-700">{item.initials}</div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm"><span className="font-semibold">{item.name}</span> <span className="text-muted-foreground">{item.action}</span></p>
-                      <p className="mt-1 text-xs text-muted-foreground">{item.role}</p>
-                    </div>
-                    <span className="hidden shrink-0 text-xs text-muted-foreground sm:block">{item.time}</span>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </main>
+      <Card className="mt-6 overflow-hidden border-slate-200 shadow-sm">
+        <CardHeader className="flex-row items-center justify-between space-y-0 border-b border-slate-100"><div><CardTitle>Recent AI calls</CardTitle><p className="mt-1 text-sm text-slate-500">Latest candidate screening activity from Hunar</p></div><Button asChild size="sm" variant="outline"><Link href="/calls">View all</Link></Button></CardHeader>
+        {loading ? <div className="space-y-3 p-6">{Array.from({ length: 4 }, (_, index) => <Skeleton className="h-12" key={index} />)}</div> : calls.length === 0 ? (
+          <EmptyState action={<Button asChild variant="outline"><Link href="/candidates">Browse candidates</Link></Button>} description="Start an AI screening call from the candidates page and it will appear here." icon={Headphones} title="No calls initiated yet" />
+        ) : (
+          <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-6 py-3 font-semibold">Candidate</th><th className="px-6 py-3 font-semibold">Job</th><th className="px-6 py-3 font-semibold">Status</th><th className="px-6 py-3 font-semibold">Interest</th><th className="px-6 py-3 font-semibold">Initiated</th></tr></thead><tbody className="divide-y divide-slate-100">{calls.slice(0, 8).map((call) => (
+            <tr className="hover:bg-slate-50/70" key={call.id}><td className="px-6 py-4 font-medium text-slate-900">{candidateById.get(call.candidate_id)?.name || "Unknown candidate"}</td><td className="px-6 py-4 text-slate-600">{jobById.get(call.job_id)?.title || "Unknown job"}</td><td className="px-6 py-4"><StatusBadge status={call.status} /></td><td className="px-6 py-4 text-slate-600">{isInterested(call) ? "Interested" : "—"}</td><td className="px-6 py-4 text-slate-500">{formatDate(call.created_at)}</td></tr>
+          ))}</tbody></table></div>
+        )}
+      </Card>
     </div>
   );
 }

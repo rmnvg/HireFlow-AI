@@ -111,6 +111,18 @@ Candidate endpoints:
 
 Apollo candidates are deduplicated per job using `(job_id, apollo_id)`, while the complete Apollo contact object is retained in `raw_profile`. API credentials and complete request headers are never logged.
 
+## Recruiter dashboard
+
+The responsive Next.js recruiter workspace includes:
+
+- `/` — live hiring totals and recent AI screening calls
+- `/jobs/new` — Groq-assisted JD analysis, editing, saving and Apollo search
+- `/candidates` — job filtering, saved-contact search, manual candidates, phone editing and confirmed AI call initiation
+- `/calls` — Hunar status, screening insights, summaries, recordings and refresh controls
+- `/attendance` — Assignment 3 attendance architecture proposal
+
+Browser API requests use only `NEXT_PUBLIC_API_URL`. Provider credentials remain backend-only environment variables. Apollo sourcing is clearly labeled as a search of contacts already saved in the configured Apollo workspace, and every voice-screening action requires confirmation that the call will be made by an AI agent.
+
 ## Hunar Voice calls
 
 Set `HUNAR_API_KEY` and set `PUBLIC_BACKEND_URL` to the externally reachable backend URL. Hunar agent and call endpoints are:
