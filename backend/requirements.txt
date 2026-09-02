@@ -1,5 +1,6 @@
 # Runtime dependencies are pinned for reproducible container builds.
 fastapi==0.141.1
+groq==1.7.0
 pydantic==2.13.5
 pydantic-settings==2.15.0
 psycopg[binary]==3.3.5

@@ -60,6 +60,37 @@ The backend creates the `jobs`, `candidates`, `calls`, and `webhook_events` tabl
 
 For Supabase, use its PostgreSQL connection string as `DATABASE_URL` and set `DATABASE_SSL=true`. Common `postgres://` and `postgresql://` URLs are normalized automatically to the Psycopg 3 SQLAlchemy dialect. Keep credentials in environment variables or your deployment secret store.
 
+## Job analysis API
+
+Set `GROQ_API_KEY` in `.env`. The backend uses `openai/gpt-oss-120b` with temperature `0`; the key is never returned or logged.
+
+Analyze a job description:
+
+```bash
+curl -X POST http://localhost:8000/api/jobs/analyze \
+  -H 'Content-Type: application/json' \
+  -d '{"description":"We are hiring a Senior Python Backend Engineer in Bengaluru. Build FastAPI services using PostgreSQL and Docker. Requires 4 to 7 years of experience."}'
+```
+
+Save the analysis by posting the original description together with the analysis fields:
+
+```bash
+curl -X POST http://localhost:8000/api/jobs \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "description": "We are hiring a Senior Python Backend Engineer in Bengaluru with 4 to 7 years of experience using FastAPI, PostgreSQL, and Docker.",
+    "job_title": "Senior Python Backend Engineer",
+    "skills": ["Python", "FastAPI", "PostgreSQL", "Docker"],
+    "location": "Bengaluru",
+    "minimum_experience": 4,
+    "maximum_experience": 7,
+    "seniority": "Senior",
+    "search_keywords": "Senior Python Backend Engineer FastAPI PostgreSQL Docker Bengaluru"
+  }'
+```
+
+List jobs with `GET /api/jobs` and retrieve one with `GET /api/jobs/{id}`. List requests support `offset` and `limit` query parameters.
+
 ## Validation
 
 ```bash

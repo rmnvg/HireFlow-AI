@@ -36,6 +36,41 @@ class JobResponse(JobCreate, ORMResponse):
     created_at: datetime
 
 
+class JobAnalysisRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    description: str = Field(min_length=20, max_length=100_000)
+
+
+class JobAnalysis(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    job_title: str = Field(max_length=255)
+    skills: list[str]
+    location: str | None = Field(default=None, max_length=255)
+    minimum_experience: int | None = Field(default=None, ge=0)
+    maximum_experience: int | None = Field(default=None, ge=0)
+    seniority: str | None = Field(default=None, max_length=100)
+    search_keywords: str = Field(max_length=1_000)
+
+    @model_validator(mode="after")
+    def validate_experience_range(self) -> "JobAnalysis":
+        if (
+            self.minimum_experience is not None
+            and self.maximum_experience is not None
+            and self.maximum_experience < self.minimum_experience
+        ):
+            raise ValueError(
+                "maximum_experience must be greater than or equal to minimum_experience"
+            )
+        return self
+
+
+class AnalyzedJobCreate(JobAnalysis):
+    job_title: str = Field(min_length=1, max_length=255)
+    description: str = Field(min_length=20, max_length=100_000)
+
+
 class CandidateCreate(BaseModel):
     job_id: uuid.UUID
     apollo_id: str | None = Field(default=None, max_length=255)
