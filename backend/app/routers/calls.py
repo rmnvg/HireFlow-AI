@@ -28,16 +28,43 @@ from app.services.hunar import (
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/calls", tags=["calls"])
 E164_PATTERN = re.compile(r"^\+[1-9]\d{7,14}$")
-STANDARD_JOB_VARIABLES = {"job_role", "job_description", "company", "location"}
+STANDARD_JOB_VARIABLES = {
+    "job_role",
+    "job_description",
+    "company",
+    "location",
+    "role_title",
+    "role_location",
+    "current_title",
+    "current_company",
+    "jd_skills",
+}
+HUNAR_CALL_FIELDS = {
+    "agent_id",
+    "callee_name",
+    "mobile_number",
+    "request_id",
+    "timezone",
+    "callback_config",
+    "custom_data",
+}
 
 
 def build_callback_config(public_backend_url: str) -> dict[str, str]:
     base_url = public_backend_url.rstrip("/")
+    if not base_url.startswith("https://"):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "Hunar calls require PUBLIC_BACKEND_URL to be a publicly reachable "
+                "HTTPS URL"
+            ),
+        )
     return {
-        "status_callback_url": f"{base_url}/webhooks/hunar/status",
-        "recording_callback_url": f"{base_url}/webhooks/hunar/recording",
-        "result_callback_url": f"{base_url}/webhooks/hunar/result",
-        "summary_callback_url": f"{base_url}/webhooks/hunar/summary",
+        "call_status_callback_url": f"{base_url}/webhooks/hunar/status",
+        "call_recording_callback_url": f"{base_url}/webhooks/hunar/recording",
+        "call_result_callback_url": f"{base_url}/webhooks/hunar/result",
+        "call_summary_callback_url": f"{base_url}/webhooks/hunar/summary",
     }
 
 
@@ -52,12 +79,19 @@ def build_required_custom_data(
         "job_description": job.description,
         "company": candidate.company,
         "location": job.location or candidate.location,
+        "role_title": job.title,
+        "role_location": job.location or candidate.location,
+        "current_title": candidate.current_title,
+        "current_company": candidate.company,
+        "jd_skills": ", ".join(job.skills),
     }
     custom_data = {
         key: value for key, value in supplied_data.items() if key not in STANDARD_JOB_VARIABLES
     }
     missing_variables: list[str] = []
     for variable in required_variables:
+        if variable in HUNAR_CALL_FIELDS:
+            continue
         value = standard_values.get(variable)
         if value is None or value == "":
             value = supplied_data.get(variable)
@@ -129,6 +163,8 @@ def create_call(
     custom_data = build_required_custom_data(
         required_variables, request.custom_data, candidate, job
     )
+    settings = get_settings()
+    callback_config = build_callback_config(settings.public_backend_url)
 
     request_id = str(uuid.uuid4())
     local_call = Call(
@@ -149,7 +185,6 @@ def create_call(
             detail="Unable to create call record",
         ) from exc
 
-    settings = get_settings()
     payload = {
         "agent_id": request.agent_id,
         "callee_name": candidate.name,
@@ -157,7 +192,7 @@ def create_call(
         "custom_data": custom_data,
         "request_id": request_id,
         "timezone": "Asia/Kolkata",
-        "callback_config": build_callback_config(settings.public_backend_url),
+        "callback_config": callback_config,
     }
     try:
         provider_response = hunar.create_call(payload)

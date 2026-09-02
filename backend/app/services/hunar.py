@@ -129,6 +129,7 @@ def extract_required_agent_variables(agent_payload: dict[str, Any]) -> list[str]
         "required_custom_data",
         "required_custom_data_variables",
         "required_prompt_variables",
+        "custom_variables",
     )
     variable_definition_keys = (
         "variables",

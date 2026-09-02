@@ -47,6 +47,7 @@ function unwrapAgents(payload: unknown): HunarAgent[] {
   if (!payload || typeof payload !== "object") return [];
   const record = payload as Record<string, unknown>;
   if (Array.isArray(record.agents)) return record.agents as HunarAgent[];
+  if (Array.isArray(record.results)) return record.results as HunarAgent[];
   if (record.data && typeof record.data === "object") {
     const data = record.data as Record<string, unknown>;
     if (Array.isArray(data.agents)) return data.agents as HunarAgent[];

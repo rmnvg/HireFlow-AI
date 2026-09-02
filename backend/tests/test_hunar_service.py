@@ -110,6 +110,7 @@ def test_required_agent_variables_support_common_metadata_shapes() -> None:
         "data": {
             "agent": {
                 "required_variables": ["job_role", {"name": "company"}],
+                "custom_variables": ["job_description"],
                 "variables": [
                     {"name": "location", "required": True},
                     {"name": "optional_note", "required": False},
@@ -124,6 +125,7 @@ def test_required_agent_variables_support_common_metadata_shapes() -> None:
     assert extract_required_agent_variables(agent) == [
         "job_role",
         "company",
+        "job_description",
         "location",
         "candidate_language",
     ]

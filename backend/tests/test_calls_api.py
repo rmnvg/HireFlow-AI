@@ -2,13 +2,30 @@ import uuid
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
+import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app.database import get_db
 from app.main import app
 from app.models import Call, Candidate, Job
+from app.routers.calls import build_callback_config
 from app.routers.hunar import get_hunar_service
 from app.services.hunar import HunarSubscriptionError
+
+
+def test_callback_config_requires_public_https_and_uses_hunar_field_names() -> None:
+    with pytest.raises(HTTPException) as exc_info:
+        build_callback_config("http://localhost:8000")
+
+    assert exc_info.value.status_code == 503
+    assert "PUBLIC_BACKEND_URL" in exc_info.value.detail
+    assert build_callback_config("https://backend.example.com/") == {
+        "call_status_callback_url": "https://backend.example.com/webhooks/hunar/status",
+        "call_recording_callback_url": "https://backend.example.com/webhooks/hunar/recording",
+        "call_result_callback_url": "https://backend.example.com/webhooks/hunar/result",
+        "call_summary_callback_url": "https://backend.example.com/webhooks/hunar/summary",
+    }
 
 
 class FakeSession:
@@ -64,10 +81,14 @@ class FakeHunar:
         return {
             "id": agent_id,
             "required_variables": [
+                "callee_name",
+                "mobile_number",
                 "job_role",
                 "job_description",
                 "company",
                 "location",
+                "role_title",
+                "role_location",
                 "candidate_language",
             ],
         }
@@ -163,12 +184,14 @@ def test_create_list_get_and_refresh_single_call() -> None:
         "job_description": "Build FastAPI and PostgreSQL services.",
         "company": "Example Labs",
         "location": "Bengaluru",
+        "role_title": "Python Backend Engineer",
+        "role_location": "Bengaluru",
     }
     assert payload["callback_config"] == {
-        "status_callback_url": "https://backend.example.com/webhooks/hunar/status",
-        "recording_callback_url": "https://backend.example.com/webhooks/hunar/recording",
-        "result_callback_url": "https://backend.example.com/webhooks/hunar/result",
-        "summary_callback_url": "https://backend.example.com/webhooks/hunar/summary",
+        "call_status_callback_url": "https://backend.example.com/webhooks/hunar/status",
+        "call_recording_callback_url": "https://backend.example.com/webhooks/hunar/recording",
+        "call_result_callback_url": "https://backend.example.com/webhooks/hunar/result",
+        "call_summary_callback_url": "https://backend.example.com/webhooks/hunar/summary",
     }
     assert len(listed.json()) == 1
     assert fetched.json()["id"] == created.json()["id"]

@@ -1,12 +1,12 @@
 # HireFlow AI
 
-A production-oriented recruiting platform starter with a Next.js dashboard, FastAPI API, PostgreSQL, and container builds suitable for local development and AWS ECS.
+A production-oriented recruiting platform starter with a Next.js dashboard, FastAPI API, Supabase PostgreSQL, and container builds suitable for local development and AWS ECS.
 
 ## Architecture
 
 - `frontend/` — Next.js App Router, React, TypeScript, Tailwind CSS, and shadcn/ui-compatible components
 - `backend/` — Python 3.12, FastAPI, Pydantic, SQLAlchemy, and PostgreSQL
-- `docker-compose.yml` — local frontend, backend, and PostgreSQL stack
+- `docker-compose.yml` — local frontend and backend connected to Supabase PostgreSQL
 - Separate production-ready Dockerfiles for independent frontend and backend ECS services
 
 ## Local development with Docker
@@ -17,7 +17,14 @@ A production-oriented recruiting platform starter with a Next.js dashboard, Fast
    cp .env.example .env
    ```
 
-2. Replace the example database password in `.env`. Keep `POSTGRES_PASSWORD` and the password embedded in `DATABASE_URL` identical.
+2. In Supabase, open **Connect**, select the **Session pooler** connection string, and
+   place it in `DATABASE_URL`. The direct `db.<project-ref>.supabase.co` connection commonly
+   requires IPv6 and may be unreachable from Docker Desktop. Keep `DATABASE_SSL=true`.
+   URL-encode special characters in the password—for example, `@` becomes `%40`.
+
+   If you already have the direct Supabase URL in `DATABASE_URL`, you can instead set
+   `SUPABASE_POOLER_HOST` to the Session pooler hostname shown by Supabase. HireFlow will
+   preserve the existing credentials and safely construct the pooler connection internally.
 
 3. Build and start the stack:
 
@@ -25,13 +32,71 @@ A production-oriented recruiting platform starter with a Next.js dashboard, Fast
    docker compose up --build
    ```
 
+   Compose loads backend settings from `.env`, builds the browser API URL from
+   `NEXT_PUBLIC_API_URL`, and starts both services. The frontend remains available to show
+   useful API errors if the backend is unhealthy. The backend health check verifies its
+   Supabase database connection.
+
 4. Open:
 
    - Dashboard: http://localhost:3000
    - API health: http://localhost:8000/health
    - API docs: http://localhost:8000/docs
 
-Stop the stack with `docker compose down`. Add `--volumes` only when you intentionally want to remove local PostgreSQL data.
+Stop the stack with `docker compose down`. Supabase data is external and is not removed by this command.
+
+Both services use `restart: unless-stopped`. Local ports are intentionally fixed:
+frontend `3000` and backend `8000`.
+
+### Docker troubleshooting
+
+Check container and health state:
+
+```bash
+docker compose ps
+docker compose logs --tail=100 backend frontend
+curl --fail http://localhost:8000/health
+curl --fail http://localhost:3000
+```
+
+If Docker reports that port `3000` or `8000` is already allocated, identify the process
+using the port, stop that process or its old container, then start HireFlow again:
+
+```bash
+lsof -nP -iTCP:3000 -sTCP:LISTEN
+lsof -nP -iTCP:8000 -sTCP:LISTEN
+docker compose down
+docker compose up --build
+```
+
+If the backend is unhealthy, verify that the Supabase project is running, the connection
+string is the Session pooler URL, `DATABASE_SSL=true`, and password special characters are
+URL-encoded. A `Network is unreachable` error for an IPv6 address normally means the direct
+Supabase connection string was used instead of the pooler.
+Then recreate the backend container after updating `.env`:
+
+```bash
+docker compose up -d --build --force-recreate backend
+docker compose logs --tail=200 backend
+```
+
+If the frontend still calls an old backend URL, confirm `NEXT_PUBLIC_API_URL` in `.env` and
+rebuild the frontend; this public value is embedded during `next build`:
+
+```bash
+docker compose build --no-cache frontend
+docker compose up -d
+```
+
+If a container is unhealthy, inspect its own health output and recent logs:
+
+```bash
+docker inspect --format '{{json .State.Health}}' hireflow-ai-backend-1
+docker compose logs --tail=200 backend
+```
+
+Groq, Apollo and Hunar keys may remain blank when validating the base stack. Their specific
+API operations return configuration errors until the corresponding backend-only key is set.
 
 ## Run services directly
 
@@ -50,15 +115,13 @@ cd backend
 python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-export DATABASE_URL='postgresql+psycopg://hireflow:password@localhost:5432/hireflow'
+export DATABASE_URL='postgresql://POOLER_USER:URL_ENCODED_PASSWORD@POOLER_HOST:5432/postgres'
 export FRONTEND_URL='http://localhost:3000'
-export DATABASE_SSL='false'
+export DATABASE_SSL='true'
 uvicorn app.main:app --reload
 ```
 
-The backend creates the `jobs`, `candidates`, `calls`, and `webhook_events` tables on startup. To initialize them explicitly, run `python -m app.init_db` from `backend/`.
-
-For Supabase, use its PostgreSQL connection string as `DATABASE_URL` and set `DATABASE_SSL=true`. Common `postgres://` and `postgresql://` URLs are normalized automatically to the Psycopg 3 SQLAlchemy dialect. Keep credentials in environment variables or your deployment secret store.
+The backend creates the `jobs`, `candidates`, `calls`, and `webhook_events` tables in Supabase on startup. To initialize them explicitly, run `python -m app.init_db` from `backend/`. Common `postgres://` and `postgresql://` URLs are normalized automatically to the Psycopg 3 SQLAlchemy dialect. Keep credentials in environment variables or your deployment secret store.
 
 ## Job analysis API
 
@@ -125,7 +188,7 @@ Browser API requests use only `NEXT_PUBLIC_API_URL`. Provider credentials remain
 
 ## Hunar Voice calls
 
-Set `HUNAR_API_KEY` and set `PUBLIC_BACKEND_URL` to the externally reachable backend URL. Hunar agent and call endpoints are:
+Set `HUNAR_API_KEY` and set `PUBLIC_BACKEND_URL` to the externally reachable HTTPS backend URL. An `http://localhost` value is sufficient for the base stack but is intentionally rejected when initiating a Hunar call because Hunar requires HTTPS callback URLs and cannot reach the developer's localhost. For local call testing, keep an HTTPS tunnel to port 8000 running for the complete call and set `PUBLIC_BACKEND_URL` to its public origin before recreating the backend container. Hunar agent and call endpoints are:
 
 - `GET /api/hunar/agents`
 - `GET /api/hunar/agents/{agent_id}`
@@ -151,8 +214,9 @@ Hunar sends status, recording, result, and summary updates to the four callback 
 
 ```bash
 cd frontend
+npm run lint
 npm run type-check
-npm run build
+NEXT_PUBLIC_API_URL=http://localhost:8000 npm run build
 
 cd ../backend
 pip install -r requirements-dev.txt
@@ -163,7 +227,7 @@ python -m compileall -q app tests
 With Docker installed, validate and build the images:
 
 ```bash
-docker compose --env-file .env.example config --quiet
+docker compose config --quiet
 docker build -t hireflow-ai-backend ./backend
 docker build --build-arg NEXT_PUBLIC_API_URL=https://api.example.com -t hireflow-ai-frontend ./frontend
 ```

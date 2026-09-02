@@ -2,6 +2,7 @@ from functools import lru_cache
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import make_url
 
 
 class Settings(BaseSettings):
@@ -10,6 +11,7 @@ class Settings(BaseSettings):
     database_url: SecretStr
     database_ssl: bool = False
     database_init_on_startup: bool = True
+    supabase_pooler_host: str | None = None
     frontend_url: str = "http://localhost:3000"
     groq_api_key: SecretStr | None = None
     groq_model: str = "openai/gpt-oss-120b"
@@ -48,7 +50,26 @@ class Settings(BaseSettings):
         url = self.database_url.get_secret_value()
         for prefix in ("postgres://", "postgresql://", "postgresql+psycopg2://"):
             if url.startswith(prefix):
-                return url.replace(prefix, "postgresql+psycopg://", 1)
+                url = url.replace(prefix, "postgresql+psycopg://", 1)
+
+        pooler_host = (self.supabase_pooler_host or "").strip()
+        if not pooler_host:
+            return url
+
+        parsed = make_url(url)
+        direct_host = parsed.host or ""
+        host_parts = direct_host.split(".")
+        if (
+            len(host_parts) >= 3
+            and host_parts[0] == "db"
+            and direct_host.endswith(".supabase.co")
+        ):
+            project_ref = host_parts[1]
+            username = parsed.username or "postgres"
+            if username == "postgres":
+                username = f"postgres.{project_ref}"
+            parsed = parsed.set(host=pooler_host, port=5432, username=username)
+            return parsed.render_as_string(hide_password=False)
         return url
 
 
