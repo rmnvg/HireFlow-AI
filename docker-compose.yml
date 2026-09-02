@@ -22,7 +22,9 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: ${DATABASE_URL}
-      CORS_ORIGINS: ${CORS_ORIGINS}
+      DATABASE_SSL: ${DATABASE_SSL}
+      DATABASE_INIT_ON_STARTUP: ${DATABASE_INIT_ON_STARTUP}
+      FRONTEND_URL: ${FRONTEND_URL}
       BACKEND_HOST: ${BACKEND_HOST}
       BACKEND_PORT: ${BACKEND_PORT}
     ports:

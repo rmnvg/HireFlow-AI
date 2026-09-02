@@ -51,9 +51,14 @@ python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 export DATABASE_URL='postgresql+psycopg://hireflow:password@localhost:5432/hireflow'
-export CORS_ORIGINS='http://localhost:3000'
+export FRONTEND_URL='http://localhost:3000'
+export DATABASE_SSL='false'
 uvicorn app.main:app --reload
 ```
+
+The backend creates the `jobs`, `candidates`, `calls`, and `webhook_events` tables on startup. To initialize them explicitly, run `python -m app.init_db` from `backend/`.
+
+For Supabase, use its PostgreSQL connection string as `DATABASE_URL` and set `DATABASE_SSL=true`. Common `postgres://` and `postgresql://` URLs are normalized automatically to the Psycopg 3 SQLAlchemy dialect. Keep credentials in environment variables or your deployment secret store.
 
 ## Validation
 
@@ -63,7 +68,9 @@ npm run type-check
 npm run build
 
 cd ../backend
-python -m compileall -q app
+pip install -r requirements-dev.txt
+pytest
+python -m compileall -q app tests
 ```
 
 With Docker installed, validate and build the images:
@@ -78,7 +85,8 @@ docker build --build-arg NEXT_PUBLIC_API_URL=https://api.example.com -t hireflow
 
 - Build and publish `frontend/Dockerfile` and `backend/Dockerfile` independently to Amazon ECR, then deploy them as separate ECS services.
 - Supply runtime values through ECS task-definition environment variables or AWS Secrets Manager. Do not bake credentials into images.
-- Set `DATABASE_URL` to the RDS PostgreSQL connection string and `CORS_ORIGINS` to the deployed frontend origin.
+- Set `DATABASE_URL` to the RDS or Supabase PostgreSQL connection string and `FRONTEND_URL` to a comma-separated list of deployed frontend origins.
+- Set `DATABASE_SSL=true` for Supabase or any PostgreSQL service that requires TLS.
 - Pass `NEXT_PUBLIC_API_URL` as a frontend image build argument because browser-visible Next.js variables are embedded during `next build`.
 - Set `INTERNAL_API_URL` at runtime for future server-side frontend requests.
 - Terminate TLS and route traffic with an Application Load Balancer. Run database migrations as a separate ECS task when schema migrations are introduced.
