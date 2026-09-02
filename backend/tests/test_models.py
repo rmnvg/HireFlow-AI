@@ -39,3 +39,14 @@ def test_candidate_apollo_id_is_unique_within_each_job() -> None:
     }
 
     assert ("job_id", "apollo_id") in unique_column_sets
+
+
+def test_webhook_event_identity_is_unique_within_event_type() -> None:
+    webhook_events = Base.metadata.tables["webhook_events"]
+    unique_column_sets = {
+        tuple(column.name for column in constraint.columns)
+        for constraint in webhook_events.constraints
+        if constraint.__class__.__name__ == "UniqueConstraint"
+    }
+
+    assert ("event_type", "external_event_id") in unique_column_sets

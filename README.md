@@ -133,6 +133,8 @@ Each call receives a local UUID request ID and is saved as `REQUESTED` before th
 
 Refresh retrieves the current provider call and updates its status, duration, recording URL, result, summary, and retained raw response. Provider validation, authentication, subscription, missing-resource, rate-limit, timeout, and server failures return distinct API errors without exposing credentials. Phone numbers and the Hunar API key are not logged. Bulk calling is intentionally not implemented.
 
+Hunar sends status, recording, result, and summary updates to the four callback URLs. Each webhook must include `X-Hunar-Timestamp` and `X-Hunar-Signature`. HireFlow verifies a Base64-encoded HMAC SHA-256 signature over `{timestamp}.{raw_request_body}` using `HUNAR_API_KEY` and rejects timestamps outside a five-minute window. Valid payloads are retained in `webhook_events`; identical retries are safely acknowledged without applying the event twice.
+
 ## Validation
 
 ```bash

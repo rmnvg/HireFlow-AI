@@ -40,6 +40,17 @@ def init_db() -> None:
     from app import models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
+    # create_all does not evolve existing tables. Keep retry deduplication safe for
+    # local databases created before the webhook integration was added.
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS "
+                "uq_webhook_events_type_external_id "
+                "ON webhook_events (event_type, external_event_id) "
+                "WHERE external_event_id IS NOT NULL"
+            )
+        )
 
 
 def check_database_connection() -> None:

@@ -14,6 +14,7 @@ from app.routers.calls import router as calls_router
 from app.routers.candidates import router as candidates_router
 from app.routers.hunar import router as hunar_router
 from app.routers.jobs import router as jobs_router
+from app.routers.webhooks import router as webhooks_router
 from app.schemas import ErrorResponse
 
 logger = logging.getLogger(__name__)
@@ -49,6 +50,7 @@ app.include_router(jobs_router)
 app.include_router(candidates_router)
 app.include_router(hunar_router)
 app.include_router(calls_router)
+app.include_router(webhooks_router)
 
 
 class HealthResponse(BaseModel):

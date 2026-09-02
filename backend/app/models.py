@@ -128,6 +128,13 @@ class Call(Base):
 
 class WebhookEvent(Base):
     __tablename__ = "webhook_events"
+    __table_args__ = (
+        UniqueConstraint(
+            "event_type",
+            "external_event_id",
+            name="uq_webhook_events_type_external_id",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     event_type: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
