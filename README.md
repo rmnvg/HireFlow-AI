@@ -1,245 +1,376 @@
 # HireFlow AI
 
-A production-oriented recruiting platform starter with a Next.js dashboard, FastAPI API, Supabase PostgreSQL, and container builds suitable for local development and AWS ECS.
+HireFlow AI is an AI-assisted recruiting workflow built as an engineering assignment. It helps recruiters turn a job description into structured requirements, review recruiter-approved Apollo contacts, initiate consented AI screening calls through Hunar, and inspect call outcomes from a responsive dashboard.
+
+The repository is a production-oriented monorepo with independently deployable frontend and backend containers.
+
+| Deployment | URL |
+| --- | --- |
+| Frontend | `https://<deployed-frontend-url>` |
+| Backend health | `https://<deployed-backend-url>/health` |
+| Backend API documentation | `https://<deployed-backend-url>/docs` |
 
 ## Architecture
 
-- `frontend/` — Next.js App Router, React, TypeScript, Tailwind CSS, and shadcn/ui-compatible components
-- `backend/` — Python 3.12, FastAPI, Pydantic, SQLAlchemy, and PostgreSQL
-- `docker-compose.yml` — local frontend and backend connected to Supabase PostgreSQL
-- Separate production-ready Dockerfiles for independent frontend and backend ECS services
+```mermaid
+flowchart LR
+    Recruiter[Recruiter] -->|HTTPS| Frontend[Next.js recruiter dashboard]
+    Frontend -->|REST / JSON| Backend[FastAPI backend]
 
-## Local development with Docker
+    subgraph Application[HireFlow AI]
+        Frontend
+        Backend
+    end
 
-1. Create a local environment file:
+    Backend -->|JD extraction| Groq[Groq API]
+    Backend -->|Saved-contact search| Apollo[Apollo contacts/search]
+    Backend -->|Agent lookup and calls| Hunar[Hunar Voice API]
+    Hunar -->|Signed HTTPS webhooks| Backend
 
-   ```bash
-   cp .env.example .env
-   ```
+    subgraph Database[Supabase PostgreSQL]
+        Jobs[(jobs)]
+        Candidates[(candidates)]
+        Calls[(calls)]
+        Events[(webhook_events)]
+    end
 
-2. In Supabase, open **Connect**, select the **Session pooler** connection string, and
-   place it in `DATABASE_URL`. The direct `db.<project-ref>.supabase.co` connection commonly
-   requires IPv6 and may be unreachable from Docker Desktop. Keep `DATABASE_SSL=true`.
-   URL-encode special characters in the password—for example, `@` becomes `%40`.
-
-   If you already have the direct Supabase URL in `DATABASE_URL`, you can instead set
-   `SUPABASE_POOLER_HOST` to the Session pooler hostname shown by Supabase. HireFlow will
-   preserve the existing credentials and safely construct the pooler connection internally.
-
-3. Build and start the stack:
-
-   ```bash
-   docker compose up --build
-   ```
-
-   Compose loads backend settings from `.env`, builds the browser API URL from
-   `NEXT_PUBLIC_API_URL`, and starts both services. The frontend remains available to show
-   useful API errors if the backend is unhealthy. The backend health check verifies its
-   Supabase database connection.
-
-4. Open:
-
-   - Dashboard: http://localhost:3000
-   - API health: http://localhost:8000/health
-   - API docs: http://localhost:8000/docs
-
-Stop the stack with `docker compose down`. Supabase data is external and is not removed by this command.
-
-Both services use `restart: unless-stopped`. Local ports are intentionally fixed:
-frontend `3000` and backend `8000`.
-
-### Docker troubleshooting
-
-Check container and health state:
-
-```bash
-docker compose ps
-docker compose logs --tail=100 backend frontend
-curl --fail http://localhost:8000/health
-curl --fail http://localhost:3000
+    Backend -->|SQLAlchemy + TLS| Jobs
+    Backend --> Candidates
+    Backend --> Calls
+    Backend --> Events
 ```
 
-If Docker reports that port `3000` or `8000` is already allocated, identify the process
-using the port, stop that process or its old container, then start HireFlow again:
+Production uses two separate images and services:
+
+```mermaid
+flowchart TB
+    Git[Source repository] --> Build[CI or local image build]
+    Build --> FEImage[Frontend image]
+    Build --> BEImage[Backend image]
+    FEImage --> ECR[(Amazon ECR)]
+    BEImage --> ECR
+    ECR --> FEService[ECS Express Mode frontend service :3000]
+    ECR --> BEService[ECS Express Mode backend service :8000]
+    FEService --> BEService
+    BEService --> Supabase[(Supabase PostgreSQL)]
+    BEService --> Providers[Groq / Apollo / Hunar]
+```
+
+## Technology stack
+
+| Layer | Technology |
+| --- | --- |
+| Frontend | Next.js App Router, React, TypeScript, Tailwind CSS, shadcn/ui-style components |
+| Backend | Python 3.12, FastAPI, Pydantic, pydantic-settings |
+| Data | PostgreSQL/Supabase, synchronous SQLAlchemy, Psycopg 3 |
+| Integrations | Groq, Apollo, Hunar Voice, HTTPX |
+| Local runtime | Docker Compose |
+| Production | Multi-stage Docker images, Amazon ECR, Amazon ECS Express Mode |
+| Testing | Pytest, FastAPI TestClient, mocked provider clients, ESLint, TypeScript, Next.js build |
+
+## Features
+
+- Live recruiter dashboard with job, candidate, call, completion, and interest totals.
+- Job-description extraction with editable title, skills, location, experience, seniority, and search keywords.
+- Persistent jobs, candidates, calls, and webhook events in PostgreSQL.
+- Apollo saved-contact search with per-job deduplication and recruiter-review messaging.
+- Manual candidate creation and E.164 phone editing.
+- Hunar agent discovery, single AI screening call initiation, status refresh, summaries, results, duration, and recordings.
+- Signed and idempotent Hunar webhook processing.
+- Responsive loading, empty, validation, and provider-error states.
+- Assignment 3 attendance-at-scale architecture proposal.
+- Separate non-root frontend and backend production containers with health checks.
+
+## End-to-end recruiting workflow
+
+```mermaid
+sequenceDiagram
+    actor R as Recruiter
+    participant UI as Next.js UI
+    participant API as FastAPI
+    participant G as Groq
+    participant DB as PostgreSQL
+    participant A as Apollo
+    participant H as Hunar
+
+    R->>UI: Enter job description
+    UI->>API: POST /api/jobs/analyze
+    API->>G: Extract structured requirements
+    G-->>API: Validated JSON
+    API-->>UI: Editable analysis
+    R->>UI: Review and save
+    UI->>API: POST /api/jobs
+    API->>DB: Save job
+    R->>UI: Find candidates
+    UI->>API: POST /api/jobs/{id}/search-candidates
+    API->>A: Search approved workspace contacts
+    A-->>API: Saved contacts
+    API->>DB: Normalize and deduplicate candidates
+    R->>UI: Confirm disclosed AI call
+    UI->>API: POST /api/calls
+    API->>H: Initiate single screening call
+    H-->>API: Call identifier and status
+    H->>API: Signed status/result/summary/recording webhooks
+    API->>DB: Idempotently update call and audit events
+    UI->>API: GET /api/calls or refresh
+    API-->>UI: Screening outcome
+```
+
+1. A recruiter enters a job title and full description.
+2. Groq extracts only requirements supported by the description; the recruiter can edit them.
+3. The reviewed job is saved to PostgreSQL.
+4. HireFlow searches approved contacts already stored in the Apollo workspace and saves normalized candidates.
+5. The recruiter reviews or completes candidate contact information.
+6. After explicit confirmation that the call is AI-generated, HireFlow starts one Hunar screening call.
+7. Hunar updates the call through signed webhooks; recruiters can also request a status refresh.
+8. The dashboard displays status, interest, duration, availability, summary, and recording when provided.
+
+## Local Docker setup
+
+### Prerequisites
+
+- Docker Desktop with Docker Compose
+- A reachable PostgreSQL/Supabase database
+- Provider credentials only for the provider workflows being tested
+
+### Start the application
 
 ```bash
-lsof -nP -iTCP:3000 -sTCP:LISTEN
-lsof -nP -iTCP:8000 -sTCP:LISTEN
-docker compose down
+cp .env.example .env
+```
+
+Populate `.env` locally, then run:
+
+```bash
 docker compose up --build
 ```
 
-If the backend is unhealthy, verify that the Supabase project is running, the connection
-string is the Session pooler URL, `DATABASE_SSL=true`, and password special characters are
-URL-encoded. A `Network is unreachable` error for an IPv6 address normally means the direct
-Supabase connection string was used instead of the pooler.
-Then recreate the backend container after updating `.env`:
+Open:
+
+- Frontend: `http://localhost:3000`
+- Backend health: `http://localhost:8000/health`
+- Interactive API documentation: `http://localhost:8000/docs`
+
+Run in the background with:
 
 ```bash
-docker compose up -d --build --force-recreate backend
-docker compose logs --tail=200 backend
+docker compose up -d --build
+docker compose ps
 ```
 
-If the frontend still calls an old backend URL, confirm `NEXT_PUBLIC_API_URL` in `.env` and
-rebuild the frontend; this public value is embedded during `next build`:
+Stop local containers with:
 
 ```bash
-docker compose build --no-cache frontend
-docker compose up -d
+docker compose down
 ```
 
-If a container is unhealthy, inspect its own health output and recent logs:
+Both services use `restart: unless-stopped`. The backend receives settings through Compose `env_file`; `NEXT_PUBLIC_API_URL` is passed to the frontend build because Next.js embeds public browser variables during compilation.
 
-```bash
-docker inspect --format '{{json .State.Health}}' hireflow-ai-backend-1
-docker compose logs --tail=200 backend
+For Supabase, prefer the Session pooler connection string when Docker Desktop cannot route to the direct IPv6 database endpoint. Keep database TLS enabled and URL-encode password characters inside the connection string.
+
+Hunar cannot send webhooks to localhost. For a consented local call test, start a temporary HTTPS tunnel to backend port 8000, put its public origin in `PUBLIC_BACKEND_URL`, and recreate the backend. Keep the tunnel running until all call webhooks arrive.
+
+## Environment variables
+
+Create `.env` from the following names and supply values only in your local environment, CI secret store, or AWS Secrets Manager. Never commit `.env`.
+
+```dotenv
+DATABASE_URL=
+DATABASE_SSL=
+DATABASE_INIT_ON_STARTUP=
+SUPABASE_POOLER_HOST=
+
+FRONTEND_URL=
+
+GROQ_API_KEY=
+GROQ_MODEL=
+GROQ_TIMEOUT_SECONDS=
+
+APOLLO_API_KEY=
+APOLLO_CONTACTS_URL=
+APOLLO_TIMEOUT_SECONDS=
+
+HUNAR_API_KEY=
+HUNAR_BASE_URL=
+HUNAR_TIMEOUT_SECONDS=
+PUBLIC_BACKEND_URL=
+
+NEXT_PUBLIC_API_URL=
+INTERNAL_API_URL=
 ```
 
-Groq, Apollo and Hunar keys may remain blank when validating the base stack. Their specific
-API operations return configuration errors until the corresponding backend-only key is set.
+`NEXT_PUBLIC_API_URL` is intentionally browser-visible and must contain only the public backend origin. All API keys and database credentials are backend-only secrets.
 
-## Run services directly
+## Integrations
 
-### Frontend
+### Groq job-description extraction
 
-```bash
-cd frontend
-npm ci
-npm run dev
-```
+The backend uses the configured Groq model with temperature `0`. The prompt requests JSON only and prohibits inventing information absent from the job description. Markdown fences are removed before parsing, the response is validated with Pydantic, and invalid JSON receives one correction attempt. Failure after both attempts returns a safe `502` response.
 
-### Backend
+### Apollo saved-contact search
+
+**Apollo `contacts/search` searches recruiter-approved contacts saved in the Apollo workspace because full People Search was unavailable on the account tier.**
+
+HireFlow sends the job's generated search keywords as `q_keywords`, with one page of up to ten contacts. If that search is empty, it retries once without keywords and labels the returned contacts as recruiter-review suggestions—not guaranteed matches. Contacts are normalized, deduplicated by Apollo ID and job ID, and retained with their raw provider profile for traceability.
+
+### Hunar calls and webhooks
+
+HireFlow retrieves available Hunar agents and their required custom variables before initiating a call. Candidate phone numbers must use E.164 format. Each request receives a UUID, is stored locally, and contains the selected agent, candidate details, required job context, Asia/Kolkata timezone, and four public HTTPS callbacks.
+
+The integration supports status, recording, result, and summary callbacks. A manual refresh retrieves the current Hunar call and updates provider status, duration, recording URL, result, summary, and retained raw response. Bulk calling is intentionally excluded.
+
+### Webhook signature validation
+
+Each webhook is verified before JSON parsing using:
+
+- Headers: `X-Hunar-Signature` and `X-Hunar-Timestamp`
+- Signing input: `{timestamp}.{raw_request_body}`
+- Algorithm: HMAC SHA-256
+- Encoding: Base64 digest
+- Secret: backend-only `HUNAR_API_KEY`
+- Replay window: five minutes
+
+Comparison is constant-time. Valid payloads are stored in `webhook_events`, calls are located by request ID or Hunar call ID, and repeated events are acknowledged idempotently without duplicate processing.
+
+## API endpoints
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `GET` | `/health` | Check API and database connectivity |
+| `POST` | `/api/jobs/analyze` | Extract structured requirements from a job description |
+| `POST` | `/api/jobs` | Save a reviewed job analysis |
+| `GET` | `/api/jobs` | List jobs with offset/limit pagination |
+| `GET` | `/api/jobs/{job_id}` | Retrieve one job |
+| `POST` | `/api/jobs/{job_id}/search-candidates` | Search and save Apollo workspace contacts |
+| `GET` | `/api/candidates?job_id={job_id}` | List candidates for a job |
+| `POST` | `/api/candidates/manual` | Create a manual candidate |
+| `PATCH` | `/api/candidates/{candidate_id}/phone` | Update a candidate phone number |
+| `GET` | `/api/hunar/agents` | List available Hunar agents |
+| `GET` | `/api/hunar/agents/{agent_id}` | Retrieve Hunar agent configuration |
+| `POST` | `/api/calls` | Initiate one AI screening call |
+| `GET` | `/api/calls` | List calls, optionally filtered by job or candidate |
+| `GET` | `/api/calls/{call_id}` | Retrieve one local call record |
+| `POST` | `/api/calls/{call_id}/refresh` | Refresh a call from Hunar |
+| `POST` | `/webhooks/hunar/status` | Receive a signed status event |
+| `POST` | `/webhooks/hunar/recording` | Receive a signed recording event |
+| `POST` | `/webhooks/hunar/result` | Receive a signed result event |
+| `POST` | `/webhooks/hunar/summary` | Receive a signed summary event |
+
+## Assignment 3: attendance at scale
+
+The `/attendance` route is a design proposal titled **Attendance at Scale Without Smartphones**; it does not add an attendance backend.
+
+The proposal uses RFID plus PIN or biometric kiosks at 100 offices, a local edge queue for offline operation, and a central attendance backend as the source of truth. A registered office landline and Hunar voice agent provide fallback, while exceptional attendance requires manager approval. An immutable audit trail records all actions.
+
+LLMs are limited to summaries, anomaly explanations, HR questions, and daily reports. Deterministic code performs final attendance calculations. The design also addresses fraud prevention, offline synchronization, scaling for 1,000 employees, privacy, and employee consent.
+
+## AWS ECR and ECS Express Mode deployment
+
+1. Build the frontend and backend Dockerfiles as separate release images.
+2. Supply the deployed backend origin as the frontend `NEXT_PUBLIC_API_URL` build argument.
+3. Create separate Amazon ECR repositories and push each tagged image.
+4. Create one ECS Express Mode service per image, exposing frontend port `3000` and backend port `8000`.
+5. Configure the backend health check at `/health`; configure the frontend root route as its service health target.
+6. Store provider keys and database credentials in AWS Secrets Manager or equivalent task secrets. Pass non-secret runtime settings through the service environment.
+7. Set `FRONTEND_URL` to the deployed frontend origin and `PUBLIC_BACKEND_URL` to the public HTTPS backend origin.
+8. Ensure outbound access from the backend service to Supabase, Groq, Apollo, and Hunar.
+9. Validate Hunar webhook delivery after deployment and use independent service scaling policies.
+
+The images run as non-root users and do not copy local `.env` files. The frontend uses Next.js standalone output. Introduce versioned database migrations and run them as a controlled deployment task before scaling beyond this assignment.
+
+## Responsible AI, privacy, and consent
+
+- Inform candidates clearly that the screening call is conducted by an AI agent and obtain consent before initiating it.
+- Call only numbers supplied for recruitment use and honor withdrawal or do-not-call requests.
+- Treat Groq extraction and Apollo results as recruiter decision support, not hiring decisions.
+- Require human review of job requirements, candidate relevance, call summaries, and recommendations.
+- Do not infer protected traits or use them for ranking, filtering, attendance, or employment decisions.
+- Minimize access to personal information and recordings; define retention and deletion policies before production use.
+- Restrict provider credentials to backend secret stores and avoid logging keys, signatures, headers, or complete phone numbers.
+- Audit screening outcomes for bias, accessibility, language quality, and false summaries.
+
+## Known limitations
+
+- Authentication, authorization, roles, tenants, and recruiter identity are not implemented.
+- Apollo search is limited to approved contacts already saved in the workspace and returns at most ten per request.
+- Provider workflows depend on account permissions, quotas, availability, and correct agent configuration.
+- Only individual Hunar calls are supported; there is no bulk calling, scheduling, retry queue, or cancellation workflow.
+- Local Hunar testing requires a temporary public HTTPS tunnel.
+- Schema creation uses SQLAlchemy initialization rather than versioned migrations.
+- Automated tests mock external providers; they do not replace consented sandbox or staging verification.
+- The attendance route is an architecture proposal only.
+
+## Future improvements
+
+- Add authentication, organization isolation, RBAC, and an administrative audit view.
+- Introduce Alembic migrations, background jobs, provider retry policies, and dead-letter handling.
+- Add encrypted field storage, configurable retention, deletion workflows, and recording access controls.
+- Add candidate consent evidence, call scheduling, opt-out handling, and accessibility preferences.
+- Add full browser end-to-end tests, contract tests, observability, tracing, and alerting.
+- Add recruiter-defined scorecards with explainable, human-approved decision rules.
+- Add CI/CD promotion across development, staging, and production ECS services.
+
+## Screenshots
+
+Add sanitized screenshots before final submission. Screenshots must not contain phone numbers, API keys, credentials, private URLs, or candidate personal data.
+
+| View | Suggested file |
+| --- | --- |
+| Recruiting dashboard | `docs/screenshots/dashboard.png` |
+| Job analysis and editing | `docs/screenshots/job-analysis.png` |
+| Candidate review | `docs/screenshots/candidates.png` |
+| AI call results | `docs/screenshots/calls.png` |
+| Attendance architecture proposal | `docs/screenshots/attendance.png` |
+
+## Testing
+
+Backend tests use mocks and do not call Groq, Apollo, or Hunar.
 
 ```bash
 cd backend
 python3.12 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
-export DATABASE_URL='postgresql://POOLER_USER:URL_ENCODED_PASSWORD@POOLER_HOST:5432/postgres'
-export FRONTEND_URL='http://localhost:3000'
-export DATABASE_SSL='true'
-uvicorn app.main:app --reload
-```
-
-The backend creates the `jobs`, `candidates`, `calls`, and `webhook_events` tables in Supabase on startup. To initialize them explicitly, run `python -m app.init_db` from `backend/`. Common `postgres://` and `postgresql://` URLs are normalized automatically to the Psycopg 3 SQLAlchemy dialect. Keep credentials in environment variables or your deployment secret store.
-
-## Job analysis API
-
-Set `GROQ_API_KEY` in `.env`. The backend uses `openai/gpt-oss-120b` with temperature `0`; the key is never returned or logged.
-
-Analyze a job description:
-
-```bash
-curl -X POST http://localhost:8000/api/jobs/analyze \
-  -H 'Content-Type: application/json' \
-  -d '{"description":"We are hiring a Senior Python Backend Engineer in Bengaluru. Build FastAPI services using PostgreSQL and Docker. Requires 4 to 7 years of experience."}'
-```
-
-Save the analysis by posting the original description together with the analysis fields:
-
-```bash
-curl -X POST http://localhost:8000/api/jobs \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "description": "We are hiring a Senior Python Backend Engineer in Bengaluru with 4 to 7 years of experience using FastAPI, PostgreSQL, and Docker.",
-    "job_title": "Senior Python Backend Engineer",
-    "skills": ["Python", "FastAPI", "PostgreSQL", "Docker"],
-    "location": "Bengaluru",
-    "minimum_experience": 4,
-    "maximum_experience": 7,
-    "seniority": "Senior",
-    "search_keywords": "Senior Python Backend Engineer FastAPI PostgreSQL Docker Bengaluru"
-  }'
-```
-
-List jobs with `GET /api/jobs` and retrieve one with `GET /api/jobs/{id}`. List requests support `offset` and `limit` query parameters.
-
-## Apollo candidate search
-
-Set `APOLLO_API_KEY` in `.env`, then call:
-
-```bash
-curl -X POST http://localhost:8000/api/jobs/JOB_UUID/search-candidates
-```
-
-This integration uses Apollo's `POST /api/v1/contacts/search` endpoint. It searches only contacts already saved in your team's Apollo workspace; it does not search Apollo's broader people database. The saved job's `search_keywords` are sent as `q_keywords`, with `page=1` and `per_page=10`.
-
-If the keyword search returns no contacts, HireFlow retries once without `q_keywords`. The response sets `fallback_without_keywords=true` and clearly labels those unfiltered workspace contacts as recruiter-review candidates, not guaranteed job matches.
-
-Candidate endpoints:
-
-- `GET /api/candidates?job_id=JOB_UUID`
-- `PATCH /api/candidates/CANDIDATE_UUID/phone` with `{"phone":"+919999999999"}`
-- `POST /api/candidates/manual` with `job_id`, `name`, `phone`, and `email`
-
-Apollo candidates are deduplicated per job using `(job_id, apollo_id)`, while the complete Apollo contact object is retained in `raw_profile`. API credentials and complete request headers are never logged.
-
-## Recruiter dashboard
-
-The responsive Next.js recruiter workspace includes:
-
-- `/` — live hiring totals and recent AI screening calls
-- `/jobs/new` — Groq-assisted JD analysis, editing, saving and Apollo search
-- `/candidates` — job filtering, saved-contact search, manual candidates, phone editing and confirmed AI call initiation
-- `/calls` — Hunar status, screening insights, summaries, recordings and refresh controls
-- `/attendance` — Assignment 3 attendance architecture proposal
-
-Browser API requests use only `NEXT_PUBLIC_API_URL`. Provider credentials remain backend-only environment variables. Apollo sourcing is clearly labeled as a search of contacts already saved in the configured Apollo workspace, and every voice-screening action requires confirmation that the call will be made by an AI agent.
-
-## Hunar Voice calls
-
-Set `HUNAR_API_KEY` and set `PUBLIC_BACKEND_URL` to the externally reachable HTTPS backend URL. An `http://localhost` value is sufficient for the base stack but is intentionally rejected when initiating a Hunar call because Hunar requires HTTPS callback URLs and cannot reach the developer's localhost. For local call testing, keep an HTTPS tunnel to port 8000 running for the complete call and set `PUBLIC_BACKEND_URL` to its public origin before recreating the backend container. Hunar agent and call endpoints are:
-
-- `GET /api/hunar/agents`
-- `GET /api/hunar/agents/{agent_id}`
-- `POST /api/calls` with `candidate_id`, `agent_id`, and optional `custom_data`
-- `GET /api/calls`, optionally filtered by `job_id` or `candidate_id`
-- `GET /api/calls/{id}`
-- `POST /api/calls/{id}/refresh`
-
-Creating a call requires the candidate phone number to use E.164 format, such as `+919999999999`. HireFlow loads the selected Hunar agent first and sends every custom-data variable marked as required by that agent. The standard `job_role`, `job_description`, `company`, and `location` values are included only when the agent requires them. Other required variables must be supplied in the request's `custom_data` object.
-
-Each call receives a local UUID request ID and is saved as `REQUESTED` before the provider request is made. The configured callbacks are:
-
-- `{PUBLIC_BACKEND_URL}/webhooks/hunar/status`
-- `{PUBLIC_BACKEND_URL}/webhooks/hunar/recording`
-- `{PUBLIC_BACKEND_URL}/webhooks/hunar/result`
-- `{PUBLIC_BACKEND_URL}/webhooks/hunar/summary`
-
-Refresh retrieves the current provider call and updates its status, duration, recording URL, result, summary, and retained raw response. Provider validation, authentication, subscription, missing-resource, rate-limit, timeout, and server failures return distinct API errors without exposing credentials. Phone numbers and the Hunar API key are not logged. Bulk calling is intentionally not implemented.
-
-Hunar sends status, recording, result, and summary updates to the four callback URLs. Each webhook must include `X-Hunar-Timestamp` and `X-Hunar-Signature`. HireFlow verifies a Base64-encoded HMAC SHA-256 signature over `{timestamp}.{raw_request_body}` using `HUNAR_API_KEY` and rejects timestamps outside a five-minute window. Valid payloads are retained in `webhook_events`; identical retries are safely acknowledged without applying the event twice.
-
-## Validation
-
-```bash
-cd frontend
-npm run lint
-npm run type-check
-NEXT_PUBLIC_API_URL=http://localhost:8000 npm run build
-
-cd ../backend
 pip install -r requirements-dev.txt
 pytest
 python -m compileall -q app tests
 ```
 
-With Docker installed, validate and build the images:
+Frontend validation:
+
+```bash
+cd frontend
+npm ci
+npm run lint
+npm run type-check
+NEXT_PUBLIC_API_URL=http://localhost:8000 npm run build
+```
+
+Docker validation:
 
 ```bash
 docker compose config --quiet
-docker build -t hireflow-ai-backend ./backend
-docker build --build-arg NEXT_PUBLIC_API_URL=https://api.example.com -t hireflow-ai-frontend ./frontend
+docker compose build
+docker compose up -d
+docker compose ps
 ```
 
-## Production deployment notes
+Expected health response:
 
-- Build and publish `frontend/Dockerfile` and `backend/Dockerfile` independently to Amazon ECR, then deploy them as separate ECS services.
-- Supply runtime values through ECS task-definition environment variables or AWS Secrets Manager. Do not bake credentials into images.
-- Set `DATABASE_URL` to the RDS or Supabase PostgreSQL connection string and `FRONTEND_URL` to a comma-separated list of deployed frontend origins.
-- Set `DATABASE_SSL=true` for Supabase or any PostgreSQL service that requires TLS.
-- Pass `NEXT_PUBLIC_API_URL` as a frontend image build argument because browser-visible Next.js variables are embedded during `next build`.
-- Set `INTERNAL_API_URL` at runtime for future server-side frontend requests.
-- Terminate TLS and route traffic with an Application Load Balancer. Run database migrations as a separate ECS task when schema migrations are introduced.
+```json
+{"status":"healthy"}
+```
 
-No API keys or credentials are committed. `.env` and `.env.local` are ignored by Git.
+At the time of the latest repository validation, all 58 backend tests passed, frontend lint and TypeScript checks passed, the Next.js production build passed, and both Docker images built successfully.
+
+## Repository structure
+
+```text
+hireflow-ai/
+├── backend/             # FastAPI application, database models, integrations, and tests
+├── frontend/            # Next.js App Router recruiter dashboard
+├── docker-compose.yml   # Local frontend/backend orchestration
+├── .env.example         # Environment-variable template
+└── README.md
+```
+
+No API keys, phone numbers, database credentials, or private deployment URLs belong in source control.
