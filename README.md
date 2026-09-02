@@ -111,6 +111,28 @@ Candidate endpoints:
 
 Apollo candidates are deduplicated per job using `(job_id, apollo_id)`, while the complete Apollo contact object is retained in `raw_profile`. API credentials and complete request headers are never logged.
 
+## Hunar Voice calls
+
+Set `HUNAR_API_KEY` and set `PUBLIC_BACKEND_URL` to the externally reachable backend URL. Hunar agent and call endpoints are:
+
+- `GET /api/hunar/agents`
+- `GET /api/hunar/agents/{agent_id}`
+- `POST /api/calls` with `candidate_id`, `agent_id`, and optional `custom_data`
+- `GET /api/calls`, optionally filtered by `job_id` or `candidate_id`
+- `GET /api/calls/{id}`
+- `POST /api/calls/{id}/refresh`
+
+Creating a call requires the candidate phone number to use E.164 format, such as `+919999999999`. HireFlow loads the selected Hunar agent first and sends every custom-data variable marked as required by that agent. The standard `job_role`, `job_description`, `company`, and `location` values are included only when the agent requires them. Other required variables must be supplied in the request's `custom_data` object.
+
+Each call receives a local UUID request ID and is saved as `REQUESTED` before the provider request is made. The configured callbacks are:
+
+- `{PUBLIC_BACKEND_URL}/webhooks/hunar/status`
+- `{PUBLIC_BACKEND_URL}/webhooks/hunar/recording`
+- `{PUBLIC_BACKEND_URL}/webhooks/hunar/result`
+- `{PUBLIC_BACKEND_URL}/webhooks/hunar/summary`
+
+Refresh retrieves the current provider call and updates its status, duration, recording URL, result, summary, and retained raw response. Provider validation, authentication, subscription, missing-resource, rate-limit, timeout, and server failures return distinct API errors without exposing credentials. Phone numbers and the Hunar API key are not logged. Bulk calling is intentionally not implemented.
+
 ## Validation
 
 ```bash

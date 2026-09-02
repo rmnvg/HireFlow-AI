@@ -131,6 +131,14 @@ class CallResponse(CallCreate, ORMResponse):
     updated_at: datetime
 
 
+class CallInitiateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    candidate_id: uuid.UUID
+    agent_id: str = Field(min_length=1, max_length=255)
+    custom_data: dict[str, Any] = Field(default_factory=dict)
+
+
 class WebhookEventCreate(BaseModel):
     event_type: str = Field(min_length=1, max_length=255)
     external_event_id: str | None = Field(default=None, max_length=255)
